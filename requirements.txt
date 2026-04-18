@@ -1,0 +1,16 @@
+transformers
+torch
+huggingface_hub
+fastapi
+uvicorn
+mlflow
+python-dotenv
+accelerate
+safetensors
+langchain
+langchain-groq
+pytest
+requests
+pandas
+matplotlib
+httpx
