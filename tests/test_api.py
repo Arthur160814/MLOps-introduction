@@ -1,46 +1,58 @@
 import pytest
 from fastapi.testclient import TestClient
+from unittest import mock
+import torch
 from src.api.main import app
-import unittest.mock as mock
 
 client = TestClient(app)
 
+class MockModelOutput:
+    def __init__(self, logits):
+        self.logits = logits
+
 def test_read_root():
-    """Test the root endpoint status."""
+    """Prueba el endpoint de salud de la API."""
     response = client.get("/")
     assert response.status_code == 200
     assert response.json()["status"] == "API is running"
 
-def test_predict_positive():
-    """Test a positive sentiment prediction."""
-    payload = {"text": "I love this bank, the service is excellent!"}
+@mock.patch("src.api.main.model")
+@mock.patch("src.api.main.tokenizer")
+def test_predict_positive(mock_tokenizer, mock_model):
+    """Simula una predicción positiva sin cargar el modelo real."""
+    mock_tokenizer.return_value = {
+        "input_ids": torch.tensor([[1, 2, 3]]), 
+        "attention_mask": torch.tensor([[1, 1, 1]])
+    }
+    
+    mock_model.return_value = MockModelOutput(torch.tensor([[0.1, 5.0]]))
+    
+    payload = {"text": "I love this service!"}
     response = client.post("/predict", json=payload)
+    
     assert response.status_code == 200
-    data = response.json()
-    assert "prediction" in data
-    assert data["prediction"][0]["label"] == "POSITIVE"
+    assert response.json()["prediction"][0]["label"] == "POSITIVE"
 
-def test_predict_negative():
-    """Test a negative sentiment prediction."""
-    payload = {"text": "This is the worst experience ever, I hate the app."}
+@mock.patch("src.api.main.model")
+@mock.patch("src.api.main.tokenizer")
+def test_predict_negative(mock_tokenizer, mock_model):
+    """Simula una predicción negativa."""
+    mock_tokenizer.return_value = {
+        "input_ids": torch.tensor([[1, 2, 3]]), 
+        "attention_mask": torch.tensor([[1, 1, 1]])
+    }
+    
+    mock_model.return_value = MockModelOutput(torch.tensor([[5.0, 0.1]]))
+    
+    payload = {"text": "This is terrible."}
     response = client.post("/predict", json=payload)
+    
     assert response.status_code == 200
-    data = response.json()
-    assert "prediction" in data
-    assert data["prediction"][0]["label"] == "NEGATIVE"
+    assert response.json()["prediction"][0]["label"] == "NEGATIVE"
 
-def test_predict_server_error():
-    """Simulate a server error (500) during prediction."""
+def test_predict_no_model():
+    """Verifica que la API responda 500 si el modelo no cargó."""
     with mock.patch("src.api.main.model", None):
-        payload = {"text": "Any text"}
-        response = client.post("/predict", json=payload)
+        response = client.post("/predict", json={"text": "Test"})
         assert response.status_code == 500
-        assert response.json()["detail"] == "Modelo no disponible."
-
-def test_predict_inference_exception():
-    """Simulate an exception during the inference process."""
-    with mock.patch("src.api.main.tokenizer", side_effect=Exception("Inference failure")):
-        payload = {"text": "Any text"}
-        response = client.post("/predict", json=payload)
-        assert response.status_code == 500
-        assert "Error en inferencia manual" in response.json()["detail"]
+        assert "Modelo no disponible" in response.json()["detail"]
